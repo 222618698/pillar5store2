@@ -1,80 +1,67 @@
 package com.p5store.domain;
 
+import com.p5store.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "users")
-@Getter
-@Setter
+@Table(name = "users",
+       uniqueConstraints = @UniqueConstraint(columnNames = "email"))
+@Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User {
+public class User extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true, length = 100)
-    private String email;
-
-    @Column(nullable = false)
-    private String passwordHash;
-
-    @Column(nullable = false, length = 80)
+    @Column(name = "first_name", nullable = false, length = 80)
     private String firstName;
 
-    @Column(nullable = false, length = 80)
+    @Column(name = "last_name", nullable = false, length = 80)
     private String lastName;
+
+    @Column(nullable = false, length = 180)
+    private String email;
+
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
 
     @Column(length = 20)
     private String phone;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     @Builder.Default
-    private Role role = Role.CUSTOMER;
+    private UserRole role = UserRole.CUSTOMER;
 
-    @Column(nullable = false)
+    @Column(name = "is_active", nullable = false)
     @Builder.Default
-    private boolean active = true;
+    private boolean isActive = true;
 
-    @CreationTimestamp
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
-
-    // ── Relationships ────────────────────────────────────────────
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    // ── Relationships ──────────────────────────────────────
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<Address> addresses = new ArrayList<>();
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Cart cart;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
     @Builder.Default
     private List<Order> orders = new ArrayList<>();
 
-    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Cart cart;
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<Review> reviews = new ArrayList<>();
 
-    // ── Helper methods ───────────────────────────────────────────
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<WishlistItem> wishlistItems = new ArrayList<>();
+
+    // ── Helpers ────────────────────────────────────────────
     public String getFullName() {
         return firstName + " " + lastName;
-    }
-
-    public enum Role {
-        CUSTOMER, ADMIN
     }
 }

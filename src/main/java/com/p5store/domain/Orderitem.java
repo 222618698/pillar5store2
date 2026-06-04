@@ -7,40 +7,35 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "order_items")
-@Getter
-@Setter
+@Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class OrderItem {
+public class OrderItem extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false)
-    private Integer quantity;
-
-    // Price snapshot at time of purchase (never changes)
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal unitPrice;
-
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal subtotal;
-
-    // ── Snapshot fields (in case product is deleted later) ───────
-    @Column(nullable = false, length = 200)
-    private String productName;
-
-    @Column(length = 100)
-    private String productSku;
-
-    // ── Relationships ────────────────────────────────────────────
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id")
-    private Product product;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "product_variant_id", nullable = false)
+    private ProductVariant productVariant;
+
+    @Column(nullable = false)
+    private int quantity;
+
+    /**
+     * Price snapshotted at time of order — never changes even if
+     * the product's price changes later.
+     */
+    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
+    private BigDecimal unitPrice;
+
+    @Column(name = "line_total", nullable = false, precision = 10, scale = 2)
+    private BigDecimal lineTotal;
+
+    @PrePersist
+    public void computeLineTotal() {
+        this.lineTotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
+    }
 }

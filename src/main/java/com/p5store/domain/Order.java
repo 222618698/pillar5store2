@@ -1,9 +1,8 @@
 package com.p5store.domain;
 
+import com.p5store.enums.OrderStatus;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -12,69 +11,63 @@ import java.util.List;
 
 @Entity
 @Table(name = "orders")
-@Getter
-@Setter
+@Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Order {
+public class Order extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    @Column(nullable = false, unique = true, length = 50)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "shipping_address_id", nullable = false)
+    private Address shippingAddress;
+
+    @Column(name = "order_number", nullable = false, unique = true, length = 30)
     private String orderNumber;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     @Builder.Default
     private OrderStatus status = OrderStatus.PENDING;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal;
 
-    @Column(nullable = false, precision = 10, scale = 2)
+    @Column(name = "shipping_cost", nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal shippingCost = BigDecimal.ZERO;
 
-    @Column(nullable = false, precision = 10, scale = 2)
+    @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal total;
 
-    @Column(length = 50)
-    private String couponCode;
+    @Column(name = "placed_at")
+    private LocalDateTime placedAt;
 
-    @Column(length = 500)
-    private String notes;
-
-    // Snapshot of shipping address at time of order
-    @Column(nullable = false, length = 500)
-    private String shippingAddressSnapshot;
-
-    @CreationTimestamp
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
-
-    // ── Relationships ────────────────────────────────────────────
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    // ── Relationships ──────────────────────────────────────
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<OrderItem> items = new ArrayList<>();
 
-    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Payment payment;
 
-    public enum OrderStatus {
-        PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED, REFUNDED
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<OrderDiscount> discounts = new ArrayList<>();
+
+    // ── Helpers ────────────────────────────────────────────
+    public void recalculateTotal() {
+        this.total = subtotal.add(shippingCost).subtract(discountAmount);
+    }
+
+    public boolean isCancellable() {
+        return status == OrderStatus.PENDING || status == OrderStatus.CONFIRMED;
     }
 }

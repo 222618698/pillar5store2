@@ -7,33 +7,27 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "cart_items",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"cart_id", "product_id"}))
-@Getter
-@Setter
+       uniqueConstraints = @UniqueConstraint(columnNames = {"cart_id", "product_variant_id"}))
+@Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CartItem {
+public class CartItem extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Integer quantity = 1;
-
-    // ── Relationships ────────────────────────────────────────────
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "cart_id", nullable = false)
     private Cart cart;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
+    @JoinColumn(name = "product_variant_id", nullable = false)
+    private ProductVariant productVariant;
 
-    // ── Computed ─────────────────────────────────────────────────
-    public BigDecimal getSubtotal() {
-        return product.getPrice().multiply(BigDecimal.valueOf(quantity));
+    @Column(nullable = false)
+    private int quantity;
+
+    // ── Helpers ────────────────────────────────────────────
+    public BigDecimal getLineTotal() {
+        return productVariant.getFinalPrice()
+                .multiply(BigDecimal.valueOf(quantity));
     }
 }
