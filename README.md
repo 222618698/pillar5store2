@@ -34,7 +34,7 @@ mermaid.initialize({
 
 const diagram = `erDiagram
   USER {
-    uuid id PK
+    bigint id PK
     string first_name
     string last_name
     string email
@@ -46,147 +46,112 @@ const diagram = `erDiagram
     timestamp updated_at
   }
   ADDRESS {
-    uuid id PK
-    uuid user_id FK
+    bigint id PK
+    bigint user_id FK
     string street
     string city
     string province
     string postal_code
     string country
     boolean is_default
+    enum type
   }
   CATEGORY {
-    uuid id PK
-    uuid parent_id FK
+    bigint id PK
+    bigint parent_id FK
     string name
-    string slug
     string description
     string image_url
     boolean is_active
   }
   PRODUCT {
-    uuid id PK
-    uuid category_id FK
+    bigint id PK
+    bigint category_id FK
     string name
-    string slug
     string description
-    decimal base_price
     string sku
-    boolean is_active
+    decimal price
+    decimal compare_at_price
+    int stock_quantity
+    string image_url
+    string badge
+    boolean featured
+    enum status
     timestamp created_at
     timestamp updated_at
   }
-  PRODUCT_VARIANT {
-    uuid id PK
-    uuid product_id FK
-    string size
-    string colour
-    decimal price_modifier
-    int stock_quantity
-    string image_url
-  }
-  PRODUCT_IMAGE {
-    uuid id PK
-    uuid product_id FK
-    string url
-    boolean is_primary
-    int sort_order
-  }
   CART {
-    uuid id PK
-    uuid user_id FK
+    bigint id PK
+    bigint user_id FK
     timestamp created_at
     timestamp updated_at
   }
   CART_ITEM {
-    uuid id PK
-    uuid cart_id FK
-    uuid product_variant_id FK
+    bigint id PK
+    bigint cart_id FK
+    bigint product_id FK
     int quantity
   }
   ORDER {
-    uuid id PK
-    uuid user_id FK
-    uuid shipping_address_id FK
+    bigint id PK
+    bigint user_id FK
     string order_number
     enum status
     decimal subtotal
     decimal shipping_cost
     decimal discount_amount
     decimal total
-    timestamp placed_at
+    string coupon_code
+    string notes
+    string shipping_address_snapshot
+    timestamp created_at
     timestamp updated_at
   }
   ORDER_ITEM {
-    uuid id PK
-    uuid order_id FK
-    uuid product_variant_id FK
+    bigint id PK
+    bigint order_id FK
+    bigint product_id FK
     int quantity
     decimal unit_price
-    decimal line_total
+    decimal subtotal
+    string product_name
+    string product_sku
   }
   PAYMENT {
-    uuid id PK
-    uuid order_id FK
-    enum provider
-    string transaction_id
+    bigint id PK
+    bigint order_id FK
+    enum method
     enum status
+    string transaction_id
+    string gateway_response
     decimal amount
+    timestamp created_at
     timestamp paid_at
   }
-  DISCOUNT {
-    uuid id PK
-    string code
-    enum type
-    decimal value
-    decimal min_order_value
-    int usage_limit
-    int usage_count
-    timestamp expires_at
-    boolean is_active
-  }
-  ORDER_DISCOUNT {
-    uuid id PK
-    uuid order_id FK
-    uuid discount_id FK
-    decimal applied_amount
-  }
   REVIEW {
-    uuid id PK
-    uuid product_id FK
-    uuid user_id FK
+    bigint id PK
+    bigint product_id FK
+    bigint user_id FK
     int rating
     string title
     text body
-    boolean is_verified
+    boolean approved
     timestamp created_at
-  }
-  WISHLIST_ITEM {
-    uuid id PK
-    uuid user_id FK
-    uuid product_variant_id FK
-    timestamp added_at
   }
 
   USER ||--o{ ADDRESS : "has"
   USER ||--o{ ORDER : "places"
-  USER ||--o{ CART : "owns"
+  USER ||--|| CART : "owns"
   USER ||--o{ REVIEW : "writes"
-  USER ||--o{ WISHLIST_ITEM : "saves"
   CATEGORY ||--o{ PRODUCT : "contains"
   CATEGORY ||--o{ CATEGORY : "parent of"
-  PRODUCT ||--o{ PRODUCT_VARIANT : "has"
-  PRODUCT ||--o{ PRODUCT_IMAGE : "has"
+  PRODUCT ||--o{ CART_ITEM : "added to"
   PRODUCT ||--o{ REVIEW : "receives"
   CART ||--o{ CART_ITEM : "contains"
-  PRODUCT_VARIANT ||--o{ CART_ITEM : "in"
-  PRODUCT_VARIANT ||--o{ ORDER_ITEM : "ordered as"
-  PRODUCT_VARIANT ||--o{ WISHLIST_ITEM : "wishlisted as"
   ORDER ||--o{ ORDER_ITEM : "contains"
   ORDER ||--|| PAYMENT : "paid via"
-  ORDER ||--o{ ORDER_DISCOUNT : "applies"
   ORDER }o--|| ADDRESS : "ships to"
-  DISCOUNT ||--o{ ORDER_DISCOUNT : "used in"
+  PRODUCT ||--o{ ORDER_ITEM : "ordered as"
 `;
 
 const { svg } = await mermaid.render('erd-svg', diagram);
@@ -262,83 +227,105 @@ document.querySelectorAll('#erd svg .row-rect-odd path, #erd svg .row-rect-even 
 ## ERD — Entity Relationship Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                         P5STORE — ENTITY RELATIONSHIP DIAGRAM                   │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                  P5STORE — ENTITY RELATIONSHIP DIAGRAM                │
+└──────────────────────────────────────────────────────────────────────┘
 
-
-  ┌──────────────┐          ┌──────────────────┐
-  │   CATEGORY   │          │     PRODUCT      │
-  │──────────────│          │──────────────────│
-  │ PK id        │◄────┐    │ PK id            │
-  │    name      │     │    │    name          │
-  │    description│    │    │    description   │
-  │    imageUrl  │     │    │    sku (UNIQUE)   │
-  │    active    │     │    │    price         │
-  │ FK parent_id │─────┘    │    compareAtPrice│
-  └──────────────┘  self-   │    stockQuantity │
-        │1          ref     │    imageUrl      │
-        │                   │    badge         │
-        │ 1:N               │    featured      │
-        ▼N                  │    status        │
-  (products in              │ FK category_id   │──────────────┐
-   this category)           └──────────────────┘              │
-                                    │1                        │
-                  ┌─────────────────┼──────────────────┐      │
-                  │                 │                  │      │
-                 N▼                N▼                 N▼      │
-          ┌──────────┐      ┌───────────┐      ┌──────────┐  │
-          │CART_ITEM │      │ORDER_ITEM │      │  REVIEW  │  │
-          │──────────│      │───────────│      │──────────│  │
-          │ PK id    │      │ PK id     │      │ PK id    │  │
-          │ quantity │      │ quantity  │      │ rating   │  │
-          │FK cart_id│      │ unitPrice │      │ title    │  │
-          │FK prod_id│      │ subtotal  │      │ body     │  │
-          └──────────┘      │ productName      │ approved │  │
-               │N           │ productSku│      │FK user_id│  │
-               │            │FK order_id│      │FK prod_id│  │
-               │1           │FK prod_id │      └──────────┘  │
-          ┌────┴─────┐      └───────────┘          │N        │
-          │   CART   │            │N                │         │
-          │──────────│            │                 │         │
-          │ PK id    │            │1                │         │
-          │ updatedAt│      ┌─────┴──────┐          │         │
-          │FK user_id│◄─┐   │   ORDER    │          │         │
-          └──────────┘  │   │────────────│          │         │
-               │1       │   │ PK id      │          │         │
-               │        │   │ orderNumber│          │         │
-               │1       │   │ status     │          │         │
-          ┌────┴──────┐ │   │ subtotal   │          │         │
-          │   USER    │ │   │ shippingCost         │         │
-          │───────────│ │   │ discountAmt│          │         │
-          │ PK id     │ │   │ total      │          │         │
-          │ email     │ │   │ couponCode │          │         │
-          │ passwordHash    │ notes      │          │         │
-          │ firstName │ │   │ addrSnapshot         │         │
-          │ lastName  │ │   │ FK user_id │──────────┼─────────┘
-          │ phone     │ └───┤            │          │
-          │ role      │     └────────────┘          │
-          │ active    │           │1                │
-          └───────────┘          │                 │
-               │1                │1                │1
-               │                 ▼                 │
-               │           ┌──────────┐            │
-               │1          │ PAYMENT  │            │
-               │           │──────────│            │
-          ┌────┴───────┐   │ PK id    │            │
-          │  ADDRESS   │   │ amount   │            │
-          │────────────│   │ method   │            │
-          │ PK id      │   │ status   │            │
-          │ street     │   │ transId  │            │
-          │ city       │   │ paidAt   │            │
-          │ province   │   │FK order_id           │
-          │ postalCode │   └──────────┘            │
-          │ country    │                           │
-          │ isDefault  │◄──────────────────────────┘
-          │ type       │         (user also
-          │ FK user_id │          has reviews)
-          └────────────┘
-
+                              ┌──────────────┐
+                              │   CATEGORY   │
+                              │──────────────│
+                              │ PK id        │
+                              │    name      │
+                              │ description  │
+                              │    image_url │
+                              │    is_active │
+                              │ FK parent_id │◄─────┐
+                              └──────────────┘      │ self-ref
+                                     │1             │
+                                     │              │
+                                    N│ 1:N          │
+                                     ▼              │
+                              ┌──────────────┐      │
+                              │   PRODUCT    │      │
+                              │──────────────│      │
+                              │ PK id        │      │
+                              │    name      │      │
+                              │ description  │      │
+                              │    sku       │      │
+                              │    price     │      │
+                              │ compare_price│      │
+                              │    stock_qty │      │
+                              │    image_url │      │
+                              │    badge     │      │
+                              │    featured  │      │
+                              │    status    │      │
+                              │ FK category_id├─────┘
+                              │ created_at   │
+                              │ updated_at   │
+                              └──────────────┘
+                                   │1
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+                   N│             N│             N│
+                    ▼              ▼              ▼
+            ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+            │  CART_ITEM   │ │ ORDER_ITEM   │ │    REVIEW    │
+            │──────────────│ │──────────────│ │──────────────│
+            │ PK id        │ │ PK id        │ │ PK id        │
+            │    quantity  │ │    quantity  │ │    rating    │
+            │ FK cart_id   │ │ FK order_id  │ │    title     │
+            │ FK product_id│ │ unit_price   │ │    body      │
+            └──────────────┘ │    subtotal  │ │    approved  │
+                    ▲        │ product_name │ │ FK user_id   │
+                    │        │  product_sku │ │ FK product_id│
+                    │        │ FK product_id│ └──────────────┘
+                    │1       └──────────────┘
+                    │              ▲
+                   N│              │1
+            ┌──────┴─────┐         │
+            │    CART    │        N│
+            │────────────│        ▼
+            │ PK id      │  ┌──────────────┐
+            │ created_at │  │    ORDER     │
+            │ updated_at │  │──────────────│
+            │ FK user_id │  │ PK id        │
+            └────────────┘  │ order_number │
+                 ▲          │    status    │
+                 │          │    subtotal  │
+                 │1         │ shipping_cost│
+                 │          │ discount_amt │
+                 │          │    total     │
+            ┌────┴────────┐ │ coupon_code  │
+            │    USER     │ │    notes     │
+            │─────────────│ │ address_snap │
+            │ PK id       │ │ FK user_id   │
+            │ first_name  │ │ created_at   │
+            │ last_name   │ │ updated_at   │
+            │ email       │ └──────────────┘
+            │ password_hash        │1
+            │ phone       │        │
+            │ role        │       N│
+            │ is_active   │        │
+            │ created_at  │        ▼
+            │ updated_at  │  ┌──────────────┐
+            └─────────────┘  │   PAYMENT    │
+                 │1          │──────────────│
+                 │           │ PK id        │
+                 │           │    method    │
+                 │           │    status    │
+            ┌────┴──────────┐│ transaction_id
+            │   ADDRESS     ││ gateway_resp │
+            │───────────────││    amount    │
+            │ PK id         ││ FK order_id  │
+            │    street     │ │ created_at   │
+            │    city       │ │    paid_at   │
+            │    province   │ └──────────────┘
+            │ postal_code   │ (1:1 relationship)
+            │    country    │
+            │  is_default   │
+            │    type       │
+            │ FK user_id    │
+            └───────────────┘
 
   CARDINALITY LEGEND
   ──────────────────
@@ -363,14 +350,14 @@ The core actor. Holds auth credentials, personal details and role (CUSTOMER / AD
 |----------------|--------------|------------------------------------|
 | id             | BIGINT PK    | Auto-increment                     |
 | email          | VARCHAR(100) | Unique, used as login identifier   |
-| passwordHash   | VARCHAR      | BCrypt hash                        |
-| firstName      | VARCHAR(80)  |                                    |
-| lastName       | VARCHAR(80)  |                                    |
+| password_hash  | VARCHAR      | BCrypt hash                        |
+| first_name     | VARCHAR(80)  |                                    |
+| last_name      | VARCHAR(80)  |                                    |
 | phone          | VARCHAR(20)  | Optional                           |
 | role           | ENUM         | CUSTOMER \| ADMIN                  |
-| active         | BOOLEAN      | Soft-disable without deletion      |
-| createdAt      | TIMESTAMP    | Auto-set on insert                 |
-| updatedAt      | TIMESTAMP    | Auto-updated                       |
+| is_active      | BOOLEAN      | Soft-disable without deletion      |
+| created_at     | TIMESTAMP    | Auto-set on insert                 |
+| updated_at     | TIMESTAMP    | Auto-updated                       |
 
 ---
 
@@ -382,8 +369,8 @@ Hierarchical product grouping. Supports parent → sub-category tree via self-re
 | id          | BIGINT PK     |                              |
 | name        | VARCHAR(100)  | Unique                       |
 | description | VARCHAR(500)  | Optional                     |
-| imageUrl    | VARCHAR(255)  | Optional banner image        |
-| active      | BOOLEAN       |                              |
+| image_url   | VARCHAR(255)  | Optional banner image        |
+| is_active   | BOOLEAN       |                              |
 | parent_id   | BIGINT FK     | → categories.id (nullable)   |
 
 ---
@@ -398,30 +385,30 @@ The sellable item. Price, stock, category link and optional compare-at price for
 | description     | TEXT           | Optional                          |
 | sku             | VARCHAR(100)   | Unique stock-keeping unit         |
 | price           | DECIMAL(10,2)  | Current sale price                |
-| compareAtPrice  | DECIMAL(10,2)  | Strikethrough/original price      |
-| stockQuantity   | INT            | ≥ 0                               |
-| imageUrl        | VARCHAR(255)   |                                   |
+| compare_at_price| DECIMAL(10,2)  | Strikethrough/original price      |
+| stock_quantity  | INT            | ≥ 0                               |
+| image_url       | VARCHAR(255)   |                                   |
 | badge           | VARCHAR(20)    | "-15%", "NEW", etc.               |
 | featured        | BOOLEAN        | Shown on homepage                 |
-| status          | ENUM           | ACTIVE/INACTIVE/OUT_OF_STOCK/DISC.|
+| status          | ENUM           | ACTIVE/INACTIVE/OUT_OF_STOCK      |
 | category_id     | BIGINT FK      | → categories.id                   |
-| createdAt       | TIMESTAMP      |                                   |
-| updatedAt       | TIMESTAMP      |                                   |
+| created_at      | TIMESTAMP      |                                   |
+| updated_at      | TIMESTAMP      |                                   |
 
 ---
 
 ### `ADDRESS`
-Shipping or billing address belonging to a user. Multiple per user; `isDefault` flags the primary.
+Shipping or billing address belonging to a user. Multiple per user; `is_default` flags the primary.
 
 | Column     | Type          | Notes                        |
 |------------|---------------|------------------------------|
 | id         | BIGINT PK     |                              |
-| street     | VARCHAR(100)  |                              |
+| street     | VARCHAR(100)  |                                    |
 | city       | VARCHAR(100)  |                              |
 | province   | VARCHAR(100)  | Optional                     |
-| postalCode | VARCHAR(20)   |                              |
+| postal_code| VARCHAR(20)   |                              |
 | country    | VARCHAR(100)  |                              |
-| isDefault  | BOOLEAN       |                              |
+| is_default | BOOLEAN       |                              |
 | type       | ENUM          | SHIPPING \| BILLING          |
 | user_id    | BIGINT FK     | → users.id                   |
 
@@ -433,7 +420,8 @@ One cart per user (1:1). Created automatically at user registration. Acts as a c
 | Column    | Type      | Notes                  |
 |-----------|-----------|------------------------|
 | id        | BIGINT PK |                        |
-| updatedAt | TIMESTAMP |                        |
+| created_at| TIMESTAMP |                        |
+| updated_at| TIMESTAMP |                        |
 | user_id   | BIGINT FK | → users.id (UNIQUE)    |
 
 ---
@@ -456,18 +444,18 @@ An immutable purchase record created from the cart. Stores address as a snapshot
 | Column                 | Type           | Notes                                      |
 |------------------------|----------------|--------------------------------------------|
 | id                     | BIGINT PK      |                                            |
-| orderNumber            | VARCHAR(50)    | Unique, human-readable (e.g. P5-ABC12345)  |
+| order_number           | VARCHAR(50)    | Unique, human-readable (e.g. P5-ABC12345)  |
 | status                 | ENUM           | PENDING→CONFIRMED→PROCESSING→SHIPPED→DELIVERED→CANCELLED→REFUNDED |
 | subtotal               | DECIMAL(10,2)  |                                            |
-| shippingCost           | DECIMAL(10,2)  | Free above R500                            |
-| discountAmount         | DECIMAL(10,2)  |                                            |
+| shipping_cost          | DECIMAL(10,2)  | Free above R500                            |
+| discount_amount        | DECIMAL(10,2)  |                                            |
 | total                  | DECIMAL(10,2)  | subtotal + shippingCost − discountAmount   |
-| couponCode             | VARCHAR(50)    | Optional                                   |
+| coupon_code            | VARCHAR(50)    | Optional                                   |
 | notes                  | VARCHAR(500)   | Optional delivery notes                    |
-| shippingAddressSnapshot| VARCHAR(500)   | Captured at checkout                       |
+| shipping_address_snapshot| VARCHAR(500)   | Captured at checkout                       |
 | user_id                | BIGINT FK      | → users.id                                 |
-| createdAt              | TIMESTAMP      |                                            |
-| updatedAt              | TIMESTAMP      |                                            |
+| created_at             | TIMESTAMP      |                                            |
+| updated_at             | TIMESTAMP      |                                            |
 
 ---
 
@@ -478,10 +466,10 @@ Line items within an order. Stores product name/SKU as a snapshot — ensures or
 |-------------|----------------|----------------------------------|
 | id          | BIGINT PK      |                                  |
 | quantity    | INT            |                                  |
-| unitPrice   | DECIMAL(10,2)  | Snapshot at time of purchase     |
+| unit_price  | DECIMAL(10,2)  | Snapshot at time of purchase     |
 | subtotal    | DECIMAL(10,2)  | quantity × unitPrice             |
-| productName | VARCHAR(200)   | Snapshot                         |
-| productSku  | VARCHAR(100)   | Snapshot                         |
+| product_name| VARCHAR(200)   | Snapshot                         |
+| product_sku | VARCHAR(100)   | Snapshot                         |
 | order_id    | BIGINT FK      | → orders.id                      |
 | product_id  | BIGINT FK      | → products.id (nullable)         |
 
@@ -496,11 +484,11 @@ One-to-one with Order. Tracks payment provider response and status separately fr
 | amount          | DECIMAL(10,2) |                                   |
 | method          | ENUM          | PAYPAL/VISA/MASTERCARD/MAESTRO    |
 | status          | ENUM          | PENDING/COMPLETED/FAILED/REFUNDED |
-| transactionId   | VARCHAR(200)  | External provider reference       |
-| gatewayResponse | VARCHAR(500)  | Raw provider response             |
+| transaction_id  | VARCHAR(200)  | External provider reference       |
+| gateway_response| VARCHAR(500)  | Raw provider response             |
 | order_id        | BIGINT FK     | → orders.id (UNIQUE)              |
-| createdAt       | TIMESTAMP     |                                   |
-| paidAt          | TIMESTAMP     | Set when COMPLETED                |
+| created_at      | TIMESTAMP     |                                   |
+| paid_at         | TIMESTAMP     | Set when COMPLETED                |
 
 ---
 
@@ -516,7 +504,7 @@ Product review from a verified user. Unique constraint on (user_id, product_id) 
 | approved   | BOOLEAN      | False until admin approves      |
 | user_id    | BIGINT FK    | → users.id                      |
 | product_id | BIGINT FK    | → products.id                   |
-| createdAt  | TIMESTAMP    |                                 |
+| created_at | TIMESTAMP    |                                 |
 
 ---
 
