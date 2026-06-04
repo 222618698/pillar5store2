@@ -1,3 +1,226 @@
+# Combined P5Store Documentation
+
+## Embedded ERD HTML
+
+```html
+
+<style>
+#erd { padding: 1rem 0; }
+#erd svg { max-width: 100%; }
+</style>
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden">P5Store Entity Relationship Diagram showing all database tables and their relationships</h2>
+<div id="erd"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+    primaryColor: dark ? '#26215C' : '#EEEDFE',
+    primaryTextColor: dark ? '#CECBF6' : '#3C3489',
+    primaryBorderColor: dark ? '#3C3489' : '#534AB7',
+    secondaryColor: dark ? '#04342C' : '#E1F5EE',
+    tertiaryColor: dark ? '#412402' : '#FAEEDA',
+  },
+});
+
+const diagram = `erDiagram
+  USER {
+    uuid id PK
+    string first_name
+    string last_name
+    string email
+    string password_hash
+    string phone
+    enum role
+    boolean is_active
+    timestamp created_at
+    timestamp updated_at
+  }
+  ADDRESS {
+    uuid id PK
+    uuid user_id FK
+    string street
+    string city
+    string province
+    string postal_code
+    string country
+    boolean is_default
+  }
+  CATEGORY {
+    uuid id PK
+    uuid parent_id FK
+    string name
+    string slug
+    string description
+    string image_url
+    boolean is_active
+  }
+  PRODUCT {
+    uuid id PK
+    uuid category_id FK
+    string name
+    string slug
+    string description
+    decimal base_price
+    string sku
+    boolean is_active
+    timestamp created_at
+    timestamp updated_at
+  }
+  PRODUCT_VARIANT {
+    uuid id PK
+    uuid product_id FK
+    string size
+    string colour
+    decimal price_modifier
+    int stock_quantity
+    string image_url
+  }
+  PRODUCT_IMAGE {
+    uuid id PK
+    uuid product_id FK
+    string url
+    boolean is_primary
+    int sort_order
+  }
+  CART {
+    uuid id PK
+    uuid user_id FK
+    timestamp created_at
+    timestamp updated_at
+  }
+  CART_ITEM {
+    uuid id PK
+    uuid cart_id FK
+    uuid product_variant_id FK
+    int quantity
+  }
+  ORDER {
+    uuid id PK
+    uuid user_id FK
+    uuid shipping_address_id FK
+    string order_number
+    enum status
+    decimal subtotal
+    decimal shipping_cost
+    decimal discount_amount
+    decimal total
+    timestamp placed_at
+    timestamp updated_at
+  }
+  ORDER_ITEM {
+    uuid id PK
+    uuid order_id FK
+    uuid product_variant_id FK
+    int quantity
+    decimal unit_price
+    decimal line_total
+  }
+  PAYMENT {
+    uuid id PK
+    uuid order_id FK
+    enum provider
+    string transaction_id
+    enum status
+    decimal amount
+    timestamp paid_at
+  }
+  DISCOUNT {
+    uuid id PK
+    string code
+    enum type
+    decimal value
+    decimal min_order_value
+    int usage_limit
+    int usage_count
+    timestamp expires_at
+    boolean is_active
+  }
+  ORDER_DISCOUNT {
+    uuid id PK
+    uuid order_id FK
+    uuid discount_id FK
+    decimal applied_amount
+  }
+  REVIEW {
+    uuid id PK
+    uuid product_id FK
+    uuid user_id FK
+    int rating
+    string title
+    text body
+    boolean is_verified
+    timestamp created_at
+  }
+  WISHLIST_ITEM {
+    uuid id PK
+    uuid user_id FK
+    uuid product_variant_id FK
+    timestamp added_at
+  }
+
+  USER ||--o{ ADDRESS : "has"
+  USER ||--o{ ORDER : "places"
+  USER ||--o{ CART : "owns"
+  USER ||--o{ REVIEW : "writes"
+  USER ||--o{ WISHLIST_ITEM : "saves"
+  CATEGORY ||--o{ PRODUCT : "contains"
+  CATEGORY ||--o{ CATEGORY : "parent of"
+  PRODUCT ||--o{ PRODUCT_VARIANT : "has"
+  PRODUCT ||--o{ PRODUCT_IMAGE : "has"
+  PRODUCT ||--o{ REVIEW : "receives"
+  CART ||--o{ CART_ITEM : "contains"
+  PRODUCT_VARIANT ||--o{ CART_ITEM : "in"
+  PRODUCT_VARIANT ||--o{ ORDER_ITEM : "ordered as"
+  PRODUCT_VARIANT ||--o{ WISHLIST_ITEM : "wishlisted as"
+  ORDER ||--o{ ORDER_ITEM : "contains"
+  ORDER ||--|| PAYMENT : "paid via"
+  ORDER ||--o{ ORDER_DISCOUNT : "applies"
+  ORDER }o--|| ADDRESS : "ships to"
+  DISCOUNT ||--o{ ORDER_DISCOUNT : "used in"
+`;
+
+const { svg } = await mermaid.render('erd-svg', diagram);
+document.getElementById('erd').innerHTML = svg;
+
+document.querySelectorAll('#erd svg .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0], nums[2], nums[4], nums[6]];
+  const ys = [nums[1], nums[3], nums[5], nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', x); rect.setAttribute('y', y);
+  rect.setAttribute('width', w); rect.setAttribute('height', h);
+  rect.setAttribute('rx', '8');
+  for (const a of ['fill', 'stroke', 'stroke-width', 'class', 'style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+
+document.querySelectorAll('#erd svg .row-rect-odd path, #erd svg .row-rect-even path').forEach(p => {
+  p.setAttribute('stroke', 'none');
+});
+</script>
+
+```
+
+---
+
 # P5Store — Java Spring Boot Backend
 
 > Full backend for the P5Store e-commerce platform. Domain-driven, layered architecture with REST API, JPA entities, service layer, and comprehensive unit tests.
