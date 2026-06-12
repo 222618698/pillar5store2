@@ -1,85 +1,52 @@
 package com.p5store.controller;
 
 import com.p5store.domain.Order;
-import com.p5store.enums.OrderStatus;
+import com.p5store.dto.request.PlaceOrderRequest;
+import com.p5store.dto.response.OrderResponse;
 import com.p5store.service.OrderService;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
+import java.util.List;
 
 @RestController
-@RequestMapping("/orders")
 @RequiredArgsConstructor
 public class OrderController {
 
     private final OrderService orderService;
 
-    // ── Customer: place order ────────────────────────────────────
-    @PostMapping
-    public ResponseEntity<Order> placeOrder(
-            @AuthenticationPrincipal UserDetails principal,
-            @RequestParam @NotNull UUID shippingAddressId,
-            @RequestParam(required = false) String discountCode) {
-
-        Order order = orderService.placeOrder(
-                extractUserId(principal), shippingAddressId, discountCode);
-        return ResponseEntity.status(HttpStatus.CREATED).body(order);
+    @PostMapping("/v1/users/{userId}/orders")
+    @ResponseStatus(HttpStatus.CREATED)
+    public OrderResponse placeOrder(@PathVariable Long userId, @Valid @RequestBody PlaceOrderRequest request) {
+        return orderService.placeOrder(userId, request);
     }
 
-    // ── Customer: my orders ──────────────────────────────────────
-    @GetMapping("/my")
-    public ResponseEntity<Page<Order>> myOrders(
-            @AuthenticationPrincipal UserDetails principal,
-            @PageableDefault(size = 10, sort = "placedAt") Pageable pageable) {
-        return ResponseEntity.ok(orderService.findByUser(extractUserId(principal), pageable));
+    @GetMapping("/v1/users/{userId}/orders")
+    public List<OrderResponse> getUserOrders(@PathVariable Long userId) {
+        return orderService.getUserOrders(userId);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Order> getById(@PathVariable UUID id) {
-        return ResponseEntity.ok(orderService.findById(id));
+    @GetMapping("/v1/orders/{orderId}")
+    public OrderResponse getById(@PathVariable Long orderId) {
+        return orderService.getById(orderId);
     }
 
-    @GetMapping("/number/{orderNumber}")
-    public ResponseEntity<Order> getByOrderNumber(@PathVariable String orderNumber) {
-        return ResponseEntity.ok(orderService.findByOrderNumber(orderNumber));
+    @GetMapping("/v1/orders/number/{orderNumber}")
+    public OrderResponse getByOrderNumber(@PathVariable String orderNumber) {
+        return orderService.getByOrderNumber(orderNumber);
     }
 
-    // ── Customer: cancel ────────────────────────────────────────
-    @PostMapping("/{id}/cancel")
-    public ResponseEntity<Order> cancel(
-            @PathVariable UUID id,
-            @AuthenticationPrincipal UserDetails principal) {
-        return ResponseEntity.ok(orderService.cancel(id, extractUserId(principal)));
-    }
-
-    // ── Admin: all orders ────────────────────────────────────────
-    @GetMapping
+    @PatchMapping("/v1/orders/{orderId}/status")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Page<Order>> allOrders(
-            @PageableDefault(size = 20, sort = "placedAt") Pageable pageable) {
-        return ResponseEntity.ok(orderService.findAll(pageable));
+    public OrderResponse updateStatus(@PathVariable Long orderId, @RequestParam Order.OrderStatus status) {
+        return orderService.updateStatus(orderId, status);
     }
 
-    // ── Admin: update status ─────────────────────────────────────
-    @PatchMapping("/{id}/status")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Order> updateStatus(
-            @PathVariable UUID id,
-            @RequestParam OrderStatus status) {
-        return ResponseEntity.ok(orderService.updateStatus(id, status));
-    }
-
-    private UUID extractUserId(UserDetails principal) {
-        return UUID.fromString(principal.getUsername());
+    @PostMapping("/v1/users/{userId}/orders/{orderId}/cancel")
+    public OrderResponse cancelOrder(@PathVariable Long userId, @PathVariable Long orderId) {
+        return orderService.cancelOrder(userId, orderId);
     }
 }

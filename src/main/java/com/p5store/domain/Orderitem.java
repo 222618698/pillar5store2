@@ -7,35 +7,32 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "order_items")
-@Getter @Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class OrderItem extends BaseEntity {
+@Getter @Setter @NoArgsConstructor
+public class OrderItem {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_variant_id", nullable = false)
-    private ProductVariant productVariant;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(nullable = false)
     private int quantity;
 
-    /**
-     * Price snapshotted at time of order — never changes even if
-     * the product's price changes later.
-     */
-    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
+    @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
 
-    @Column(name = "line_total", nullable = false, precision = 10, scale = 2)
-    private BigDecimal lineTotal;
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal subtotal;
 
-    @PrePersist
-    public void computeLineTotal() {
-        this.lineTotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
-    }
+    @Column(nullable = false, length = 200)
+    private String productName;
+
+    @Column(nullable = false, length = 100)
+    private String productSku;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id")
+    private Product product;
 }

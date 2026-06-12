@@ -1,18 +1,23 @@
 package com.p5store.service;
 
-import com.p5store.domain.Product;
+import com.p5store.dto.request.ProductRequest;
+import com.p5store.dto.response.ProductResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.UUID;
+import java.math.BigDecimal;
+import java.util.List;
 
 public interface ProductService {
-    Product findById(UUID id);
-    Product findBySlug(String slug);
-    Page<Product> findAll(Pageable pageable);
-    Page<Product> findByCategory(UUID categoryId, Pageable pageable);
-    Page<Product> search(String query, Pageable pageable);
-    Product create(Product product);
-    Product update(UUID id, Product updated);
-    void delete(UUID id);
+    ProductResponse create(ProductRequest request);
+    ProductResponse update(Long id, ProductRequest request);
+    void delete(Long id);
+    ProductResponse getById(Long id);
+    ProductResponse getBySku(String sku);
+    Page<ProductResponse> getAll(Pageable pageable);
+    List<ProductResponse> getFeatured();
+    List<ProductResponse> getNewArrivals();
+    List<ProductResponse> getByCategory(Long categoryId);
+    List<ProductResponse> search(String q);
+    List<ProductResponse> getByPriceRange(BigDecimal min, BigDecimal max);
 }

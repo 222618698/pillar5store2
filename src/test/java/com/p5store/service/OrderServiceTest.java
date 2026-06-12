@@ -1,298 +1,162 @@
 package com.p5store.service;
 
 import com.p5store.domain.*;
-import com.p5store.enums.DiscountType;
-import com.p5store.enums.OrderStatus;
-import com.p5store.exception.*;
-import com.p5store.repository.*;
+import com.p5store.dto.request.PlaceOrderRequest;
+import com.p5store.dto.response.OrderResponse;
+import com.p5store.exception.BusinessException;
+import com.p5store.exception.ResourceNotFoundException;
+import com.p5store.repository.AddressRepository;
+import com.p5store.repository.CartRepository;
+import com.p5store.repository.OrderRepository;
+import com.p5store.repository.ProductRepository;
 import com.p5store.service.impl.OrderServiceImpl;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.BDDMockito.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("OrderService")
 class OrderServiceTest {
 
     @Mock OrderRepository orderRepository;
-    @Mock UserRepository userRepository;
-    @Mock AddressRepository addressRepository;
     @Mock CartRepository cartRepository;
-    @Mock DiscountRepository discountRepository;
-    @Mock CartService cartService;
+    @Mock AddressRepository addressRepository;
+    @Mock ProductRepository productRepository;
     @InjectMocks OrderServiceImpl orderService;
 
-    private UUID userId;
-    private UUID addressId;
-    private User user;
-    private Address address;
-    private Cart cart;
-    private Product product;
-    private ProductVariant variant;
+    User user;
+    Cart cart;
+    Product product;
+    Address address;
+    PlaceOrderRequest placeReq;
 
     @BeforeEach
     void setUp() {
-        userId    = UUID.randomUUID();
-        addressId = UUID.randomUUID();
+        user = new User();
+        user.setId(1L);
 
-        user = User.builder().firstName("Jane").lastName("Smith").email("jane@test.com").build();
-        setId(user, userId);
+        product = new Product();
+        product.setId(10L);
+        product.setName("Headphones");
+        product.setSku("HP-001");
+        product.setPrice(new BigDecimal("300.00"));
+        product.setStockQuantity(5);
+        product.setStatus(Product.ProductStatus.ACTIVE);
 
-        address = Address.builder().user(user).street("1 Test Rd").city("Cape Town")
-                .province("WC").postalCode("7550").build();
-        setId(address, addressId);
+        CartItem item = new CartItem();
+        item.setProduct(product);
+        item.setQuantity(2);
 
-        product = Product.builder()
-                .name("Test Product")
-                .basePrice(new BigDecimal("200.00"))
-                .build();
+        cart = new Cart();
+        cart.setId(1L);
+        cart.setUser(user);
+        cart.setItems(new ArrayList<>(List.of(item)));
 
-        variant = ProductVariant.builder()
-                .product(product)
-                .priceModifier(BigDecimal.ZERO)
-                .stockQuantity(5)
-                .build();
+        address = new Address();
+        address.setId(5L);
+        address.setUser(user);
+        address.setStreet("123 Main St");
+        address.setCity("Cape Town");
+        address.setPostalCode("8000");
+        address.setCountry("South Africa");
 
-        CartItem cartItem = CartItem.builder().productVariant(variant).quantity(2).build();
-
-        cart = Cart.builder().user(user).build();
-        cart.getItems().add(cartItem);
-        cartItem.setCart(cart);
+        placeReq = new PlaceOrderRequest(5L, null, null, "VISA");
     }
 
-    // ── placeOrder ─────────────────────────────────────────────
-    @Nested
-    @DisplayName("placeOrder")
-    class PlaceOrder {
+    @Test
+    void placeOrder_success_stockDeducted() {
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(addressRepository.findById(5L)).thenReturn(Optional.of(address));
+        when(productRepository.save(any())).thenReturn(product);
+        when(orderRepository.save(any())).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(100L);
+            return o;
+        });
+        when(cartRepository.save(any())).thenReturn(cart);
 
-        @BeforeEach
-        void mockFoundEntities() {
-            given(userRepository.findById(userId)).willReturn(Optional.of(user));
-            given(addressRepository.findById(addressId)).willReturn(Optional.of(address));
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(orderRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-            given(cartRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-        }
+        OrderResponse resp = orderService.placeOrder(1L, placeReq);
 
-        @Test
-        @DisplayName("creates order with correct subtotal from cart items")
-        void createsOrderWithCorrectSubtotal() {
-            Order result = orderService.placeOrder(userId, addressId, null);
-
-            // 2 × R200 = R400 subtotal, shipping = R79 (under R500 threshold)
-            assertThat(result.getSubtotal()).isEqualByComparingTo("400.00");
-            assertThat(result.getShippingCost()).isEqualByComparingTo("79.00");
-            assertThat(result.getTotal()).isEqualByComparingTo("479.00");
-        }
-
-        @Test
-        @DisplayName("applies free shipping when subtotal >= R500")
-        void freeShipping_whenSubtotalOverThreshold() {
-            variant.setStockQuantity(10);
-            cart.getItems().get(0).setQuantity(3); // 3 × R200 = R600
-
-            Order result = orderService.placeOrder(userId, addressId, null);
-
-            assertThat(result.getSubtotal()).isEqualByComparingTo("600.00");
-            assertThat(result.getShippingCost()).isEqualByComparingTo("0.00");
-        }
-
-        @Test
-        @DisplayName("deducts stock on successful order placement")
-        void deductsStock_onSuccess() {
-            int stockBefore = variant.getStockQuantity(); // 5
-
-            orderService.placeOrder(userId, addressId, null);
-
-            assertThat(variant.getStockQuantity()).isEqualTo(stockBefore - 2); // deducted 2
-        }
-
-        @Test
-        @DisplayName("clears cart after order placed")
-        void clearsCart_afterOrderPlaced() {
-            orderService.placeOrder(userId, addressId, null);
-
-            assertThat(cart.getItems()).isEmpty();
-        }
-
-        @Test
-        @DisplayName("generates unique order number with P5- prefix")
-        void generatesOrderNumber_withPrefix() {
-            Order result = orderService.placeOrder(userId, addressId, null);
-
-            assertThat(result.getOrderNumber()).startsWith("P5-");
-        }
-
-        @Test
-        @DisplayName("applies percentage discount correctly")
-        void appliesPercentageDiscount() {
-            Discount discount = Discount.builder()
-                    .code("SAVE15")
-                    .type(DiscountType.PERCENTAGE)
-                    .value(new BigDecimal("15"))
-                    .minOrderValue(BigDecimal.ZERO)
-                    .isActive(true)
-                    .build();
-
-            given(discountRepository.findByCodeIgnoreCase("SAVE15")).willReturn(Optional.of(discount));
-
-            Order result = orderService.placeOrder(userId, addressId, "SAVE15");
-
-            // 15% of R400 = R60 discount
-            assertThat(result.getDiscountAmount()).isEqualByComparingTo("60.00");
-        }
-
-        @Test
-        @DisplayName("throws InvalidDiscountException for unknown code")
-        void throwsInvalidDiscount_forUnknownCode() {
-            given(discountRepository.findByCodeIgnoreCase("FAKE")).willReturn(Optional.empty());
-
-            assertThatThrownBy(() -> orderService.placeOrder(userId, addressId, "FAKE"))
-                    .isInstanceOf(InvalidDiscountException.class);
-        }
-
-        @Test
-        @DisplayName("throws InsufficientStockException when stock too low")
-        void throwsInsufficientStock_whenStockTooLow() {
-            variant.setStockQuantity(1); // only 1 available but 2 requested
-
-            assertThatThrownBy(() -> orderService.placeOrder(userId, addressId, null))
-                    .isInstanceOf(InsufficientStockException.class);
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when cart is empty")
-        void throwsBadRequest_whenCartEmpty() {
-            cart.getItems().clear();
-
-            assertThatThrownBy(() -> orderService.placeOrder(userId, addressId, null))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("empty");
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when address belongs to different user")
-        void throwsBadRequest_whenAddressNotOwned() {
-            User otherUser = User.builder().firstName("Other").lastName("User").email("other@test.com").build();
-            setId(otherUser, UUID.randomUUID());
-            address.setUser(otherUser); // address owned by someone else
-
-            assertThatThrownBy(() -> orderService.placeOrder(userId, addressId, null))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("does not belong");
-        }
+        assertThat(resp.total()).isEqualByComparingTo(new BigDecimal("650.00")); // 600 + 50 shipping
+        assertThat(product.getStockQuantity()).isEqualTo(3);
     }
 
-    // ── cancel ─────────────────────────────────────────────────
-    @Nested
-    @DisplayName("cancel")
-    class Cancel {
+    @Test
+    void placeOrder_emptyCart_throws() {
+        cart.getItems().clear();
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
 
-        private Order pendingOrder;
-        private UUID orderId;
-
-        @BeforeEach
-        void setUpOrder() {
-            orderId = UUID.randomUUID();
-            pendingOrder = Order.builder()
-                    .user(user)
-                    .status(OrderStatus.PENDING)
-                    .subtotal(new BigDecimal("400.00"))
-                    .shippingCost(new BigDecimal("79.00"))
-                    .discountAmount(BigDecimal.ZERO)
-                    .total(new BigDecimal("479.00"))
-                    .orderNumber("P5-20260101-1234")
-                    .shippingAddress(address)
-                    .build();
-
-            OrderItem oi = OrderItem.builder()
-                    .order(pendingOrder)
-                    .productVariant(variant)
-                    .quantity(2)
-                    .unitPrice(new BigDecimal("200.00"))
-                    .lineTotal(new BigDecimal("400.00"))
-                    .build();
-            pendingOrder.getItems().add(oi);
-
-            given(orderRepository.findByIdWithItems(orderId)).willReturn(Optional.of(pendingOrder));
-            given(orderRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-        }
-
-        @Test
-        @DisplayName("cancels pending order and returns stock")
-        void cancelsPendingOrder_andReturnsStock() {
-            int stockBefore = variant.getStockQuantity();
-
-            Order result = orderService.cancel(orderId, userId);
-
-            assertThat(result.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-            assertThat(variant.getStockQuantity()).isEqualTo(stockBefore + 2);
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when order is already shipped")
-        void throwsBadRequest_whenAlreadyShipped() {
-            pendingOrder.setStatus(OrderStatus.SHIPPED);
-
-            assertThatThrownBy(() -> orderService.cancel(orderId, userId))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("cannot be cancelled");
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when a different user tries to cancel")
-        void throwsBadRequest_whenWrongUser() {
-            UUID otherUserId = UUID.randomUUID();
-
-            assertThatThrownBy(() -> orderService.cancel(orderId, otherUserId))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("Cannot cancel another user");
-        }
+        assertThatThrownBy(() -> orderService.placeOrder(1L, placeReq))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("empty");
     }
 
-    // ── updateStatus ───────────────────────────────────────────
-    @Nested
-    @DisplayName("updateStatus")
-    class UpdateStatus {
+    @Test
+    void placeOrder_addressNotFound_throws() {
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(addressRepository.findById(5L)).thenReturn(Optional.empty());
 
-        @Test
-        @DisplayName("updates order status correctly")
-        void updatesStatus() {
-            UUID orderId = UUID.randomUUID();
-            Order order = Order.builder()
-                    .status(OrderStatus.PENDING)
-                    .user(user).shippingAddress(address)
-                    .subtotal(BigDecimal.TEN).shippingCost(BigDecimal.ZERO)
-                    .discountAmount(BigDecimal.ZERO).total(BigDecimal.TEN)
-                    .orderNumber("P5-TEST-001")
-                    .build();
-
-            given(orderRepository.findByIdWithItems(orderId)).willReturn(Optional.of(order));
-            given(orderRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-
-            Order result = orderService.updateStatus(orderId, OrderStatus.SHIPPED);
-
-            assertThat(result.getStatus()).isEqualTo(OrderStatus.SHIPPED);
-        }
+        assertThatThrownBy(() -> orderService.placeOrder(1L, placeReq))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
-    // ── Helper ─────────────────────────────────────────────────
-    private void setId(Object entity, UUID id) {
-        try {
-            var f = com.p5store.domain.BaseEntity.class.getDeclaredField("id");
-            f.setAccessible(true);
-            f.set(entity, id);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    @Test
+    void placeOrder_wrongUser_throws() {
+        User other = new User();
+        other.setId(99L);
+        address.setUser(other);
+
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(addressRepository.findById(5L)).thenReturn(Optional.of(address));
+
+        assertThatThrownBy(() -> orderService.placeOrder(1L, placeReq))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("does not belong");
+    }
+
+    @Test
+    void placeOrder_insufficientStock_throws() {
+        product.setStockQuantity(1);
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(addressRepository.findById(5L)).thenReturn(Optional.of(address));
+
+        assertThatThrownBy(() -> orderService.placeOrder(1L, placeReq))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Insufficient stock");
+    }
+
+    @Test
+    void cancelOrder_success_stockRestored() {
+        Order order = new Order();
+        order.setId(100L);
+        order.setUser(user);
+        order.setStatus(Order.OrderStatus.PENDING);
+
+        OrderItem oi = new OrderItem();
+        oi.setProduct(product);
+        oi.setQuantity(2);
+        oi.setProductName("Headphones");
+        oi.setProductSku("HP-001");
+        oi.setUnitPrice(new BigDecimal("300.00"));
+        oi.setSubtotal(new BigDecimal("600.00"));
+        order.setItems(new ArrayList<>(List.of(oi)));
+
+        when(orderRepository.findById(100L)).thenReturn(Optional.of(order));
+        when(productRepository.save(any())).thenReturn(product);
+        when(orderRepository.save(any())).thenReturn(order);
+
+        OrderResponse resp = orderService.cancelOrder(1L, 100L);
+        assertThat(resp.status()).isEqualTo("CANCELLED");
+        assertThat(product.getStockQuantity()).isEqualTo(7);
     }
 }

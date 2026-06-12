@@ -5,28 +5,29 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
-@Repository
-public interface ProductRepository extends JpaRepository<Product, UUID> {
-
-    Optional<Product> findBySlug(String slug);
-
-    Page<Product> findByIsActiveTrueAndCategoryId(UUID categoryId, Pageable pageable);
-
-    Page<Product> findByIsActiveTrue(Pageable pageable);
-
-    @Query("""
-        SELECT p FROM Product p
-        WHERE p.isActive = true
-          AND (LOWER(p.name) LIKE LOWER(CONCAT('%', :q, '%'))
-            OR LOWER(p.description) LIKE LOWER(CONCAT('%', :q, '%')))
-        """)
-    Page<Product> search(@Param("q") String query, Pageable pageable);
+public interface ProductRepository extends JpaRepository<Product, Long> {
 
     boolean existsBySku(String sku);
+    Optional<Product> findBySku(String sku);
+
+    Page<Product> findByStatus(Product.ProductStatus status, Pageable pageable);
+
+    List<Product> findByFeaturedTrueAndStatus(Product.ProductStatus status);
+
+    List<Product> findByCategoryIdAndStatus(Long categoryId, Product.ProductStatus status);
+
+    @Query("SELECT p FROM Product p WHERE p.status = 'ACTIVE' AND " +
+           "(LOWER(p.name) LIKE LOWER(CONCAT('%',:q,'%')) OR LOWER(p.description) LIKE LOWER(CONCAT('%',:q,'%')))")
+    List<Product> search(String q);
+
+    @Query("SELECT p FROM Product p WHERE p.status = 'ACTIVE' AND p.price BETWEEN :min AND :max")
+    List<Product> findByPriceRange(BigDecimal min, BigDecimal max);
+
+    @Query("SELECT p FROM Product p WHERE p.status = 'ACTIVE' ORDER BY p.createdAt DESC")
+    List<Product> findNewArrivals(Pageable pageable);
 }

@@ -1,9 +1,7 @@
 package com.p5store.controller;
 
-import com.p5store.config.ProductMapper;
 import com.p5store.dto.request.ProductRequest;
 import com.p5store.dto.response.ProductResponse;
-import com.p5store.service.AdminProductService;
 import com.p5store.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -11,87 +9,76 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
+import java.math.BigDecimal;
+import java.util.List;
 
 @RestController
-@RequestMapping("/products")
+@RequestMapping("/v1/products")
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductService productService;
-    private final AdminProductService adminProductService;
-    private final ProductMapper productMapper;
-
-    // ── PUBLIC: customers browse active catalogue ────────────────
 
     @GetMapping
-    public ResponseEntity<Page<ProductResponse>> list(
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) String q,
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-
-        Page<ProductResponse> result;
-        if (q != null && !q.isBlank()) {
-            result = productService.search(q, pageable).map(productMapper::toResponse);
-        } else if (categoryId != null) {
-            result = productService.findByCategory(categoryId, pageable).map(productMapper::toResponse);
-        } else {
-            result = productService.findAll(pageable).map(productMapper::toResponse);
-        }
-        return ResponseEntity.ok(result);
+    public Page<ProductResponse> getAll(@PageableDefault(size = 12) Pageable pageable) {
+        return productService.getAll(pageable);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ProductResponse> getById(@PathVariable UUID id) {
-        return ResponseEntity.ok(productMapper.toResponse(productService.findById(id)));
+    public ProductResponse getById(@PathVariable Long id) {
+        return productService.getById(id);
     }
 
-    @GetMapping("/slug/{slug}")
-    public ResponseEntity<ProductResponse> getBySlug(@PathVariable String slug) {
-        return ResponseEntity.ok(productMapper.toResponse(productService.findBySlug(slug)));
+    @GetMapping("/sku/{sku}")
+    public ProductResponse getBySku(@PathVariable String sku) {
+        return productService.getBySku(sku);
     }
 
-    // ── ADMIN: full product management ──────────────────────────
-
-    /** List ALL products including inactive drafts. */
-    @GetMapping("/admin")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Page<ProductResponse>> listAll(
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        return ResponseEntity.ok(adminProductService.listAll(pageable));
+    @GetMapping("/featured")
+    public List<ProductResponse> getFeatured() {
+        return productService.getFeatured();
     }
 
-    /**
-     * Create a product. If active=true it appears in the public catalogue
-     * immediately. Set active=false to save as a draft first.
-     */
+    @GetMapping("/new-arrivals")
+    public List<ProductResponse> getNewArrivals() {
+        return productService.getNewArrivals();
+    }
+
+    @GetMapping("/category/{categoryId}")
+    public List<ProductResponse> getByCategory(@PathVariable Long categoryId) {
+        return productService.getByCategory(categoryId);
+    }
+
+    @GetMapping("/search")
+    public List<ProductResponse> search(@RequestParam String q) {
+        return productService.search(q);
+    }
+
+    @GetMapping("/price-range")
+    public List<ProductResponse> getByPriceRange(@RequestParam BigDecimal min, @RequestParam BigDecimal max) {
+        return productService.getByPriceRange(min, max);
+    }
+
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(adminProductService.createProduct(request));
+    public ProductResponse create(@Valid @RequestBody ProductRequest request) {
+        return productService.create(request);
     }
 
-    /**
-     * Full update. Set active=false to hide from customers, active=true to re-publish.
-     */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ProductResponse> update(
-            @PathVariable UUID id,
-            @Valid @RequestBody ProductRequest request) {
-        return ResponseEntity.ok(adminProductService.updateProduct(id, request));
+    public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
+        return productService.update(id, request);
     }
 
-    /** Soft delete — hides from customers, data preserved in DB. */
     @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        adminProductService.deleteProduct(id);
-        return ResponseEntity.noContent().build();
+    public void delete(@PathVariable Long id) {
+        productService.delete(id);
     }
 }

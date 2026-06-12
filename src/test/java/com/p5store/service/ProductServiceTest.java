@@ -2,13 +2,14 @@ package com.p5store.service;
 
 import com.p5store.domain.Category;
 import com.p5store.domain.Product;
-import com.p5store.exception.DuplicateResourceException;
+import com.p5store.dto.request.ProductRequest;
+import com.p5store.dto.response.ProductResponse;
+import com.p5store.exception.BusinessException;
 import com.p5store.exception.ResourceNotFoundException;
+import com.p5store.repository.CategoryRepository;
 import com.p5store.repository.ProductRepository;
 import com.p5store.service.impl.ProductServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,183 +22,137 @@ import org.springframework.data.domain.PageRequest;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.BDDMockito.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ProductService")
 class ProductServiceTest {
 
     @Mock ProductRepository productRepository;
+    @Mock CategoryRepository categoryRepository;
     @InjectMocks ProductServiceImpl productService;
 
-    private Product sampleProduct;
-    private UUID productId;
+    Category category;
+    Product product;
+    ProductRequest request;
 
     @BeforeEach
     void setUp() {
-        productId = UUID.randomUUID();
-        Category category = Category.builder()
-                .name("Jewellery")
-                .slug("jewellery")
-                .build();
+        category = new Category();
+        category.setId(1L);
+        category.setName("Electronics");
 
-        sampleProduct = Product.builder()
-                .name("Gold Bracelet")
-                .slug("gold-bracelet")
-                .description("A beautiful gold bracelet")
-                .basePrice(new BigDecimal("207.86"))
-                .sku("JWL-001")
-                .category(category)
-                .isActive(true)
-                .build();
+        product = new Product();
+        product.setId(1L);
+        product.setName("Phone");
+        product.setSku("SKU-001");
+        product.setPrice(new BigDecimal("999.00"));
+        product.setStockQuantity(10);
+        product.setCategory(category);
+        product.setStatus(Product.ProductStatus.ACTIVE);
+
+        request = new ProductRequest("Phone", "Desc", "SKU-001",
+                new BigDecimal("999.00"), null, 10, null, null, false, 1L);
     }
 
-    // ── findById ───────────────────────────────────────────────
-    @Nested
-    @DisplayName("findById")
-    class FindById {
+    @Test
+    void create_success() {
+        when(productRepository.existsBySku("SKU-001")).thenReturn(false);
+        when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+        when(productRepository.save(any())).thenReturn(product);
 
-        @Test
-        @DisplayName("returns product when it exists")
-        void returnsProduct_whenExists() {
-            given(productRepository.findById(productId)).willReturn(Optional.of(sampleProduct));
+        ProductResponse resp = productService.create(request);
 
-            Product result = productService.findById(productId);
-
-            assertThat(result).isEqualTo(sampleProduct);
-            assertThat(result.getName()).isEqualTo("Gold Bracelet");
-        }
-
-        @Test
-        @DisplayName("throws ResourceNotFoundException when not found")
-        void throwsNotFound_whenMissing() {
-            given(productRepository.findById(productId)).willReturn(Optional.empty());
-
-            assertThatThrownBy(() -> productService.findById(productId))
-                    .isInstanceOf(ResourceNotFoundException.class)
-                    .hasMessageContaining(productId.toString());
-        }
+        assertThat(resp.name()).isEqualTo("Phone");
+        verify(productRepository).save(any());
     }
 
-    // ── findBySlug ─────────────────────────────────────────────
-    @Nested
-    @DisplayName("findBySlug")
-    class FindBySlug {
+    @Test
+    void create_duplicateSku_throws() {
+        when(productRepository.existsBySku("SKU-001")).thenReturn(true);
 
-        @Test
-        @DisplayName("returns product when slug matches")
-        void returnsProduct_whenSlugMatches() {
-            given(productRepository.findBySlug("gold-bracelet")).willReturn(Optional.of(sampleProduct));
-
-            Product result = productService.findBySlug("gold-bracelet");
-
-            assertThat(result.getSlug()).isEqualTo("gold-bracelet");
-        }
-
-        @Test
-        @DisplayName("throws ResourceNotFoundException for unknown slug")
-        void throwsNotFound_forUnknownSlug() {
-            given(productRepository.findBySlug(anyString())).willReturn(Optional.empty());
-
-            assertThatThrownBy(() -> productService.findBySlug("missing"))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+        assertThatThrownBy(() -> productService.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("SKU already exists");
     }
 
-    // ── create ─────────────────────────────────────────────────
-    @Nested
-    @DisplayName("create")
-    class Create {
+    @Test
+    void create_categoryNotFound_throws() {
+        when(productRepository.existsBySku("SKU-001")).thenReturn(false);
+        when(categoryRepository.findById(1L)).thenReturn(Optional.empty());
 
-        @Test
-        @DisplayName("saves and returns product when SKU is unique")
-        void savesProduct_whenSkuIsUnique() {
-            given(productRepository.existsBySku("JWL-001")).willReturn(false);
-            given(productRepository.save(sampleProduct)).willReturn(sampleProduct);
-
-            Product result = productService.create(sampleProduct);
-
-            assertThat(result).isEqualTo(sampleProduct);
-            then(productRepository).should().save(sampleProduct);
-        }
-
-        @Test
-        @DisplayName("throws DuplicateResourceException when SKU already exists")
-        void throwsDuplicate_whenSkuExists() {
-            given(productRepository.existsBySku("JWL-001")).willReturn(true);
-
-            assertThatThrownBy(() -> productService.create(sampleProduct))
-                    .isInstanceOf(DuplicateResourceException.class)
-                    .hasMessageContaining("JWL-001");
-
-            then(productRepository).should(never()).save(any());
-        }
+        assertThatThrownBy(() -> productService.create(request))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
-    // ── update ─────────────────────────────────────────────────
-    @Nested
-    @DisplayName("update")
-    class Update {
+    @Test
+    void create_zeroStock_statusIsOutOfStock() {
+        ProductRequest zeroStock = new ProductRequest("Phone", null, "SKU-002",
+                new BigDecimal("999.00"), null, 0, null, null, false, 1L);
+        Product outOfStock = new Product();
+        outOfStock.setId(2L);
+        outOfStock.setSku("SKU-002");
+        outOfStock.setStockQuantity(0);
+        outOfStock.setStatus(Product.ProductStatus.OUT_OF_STOCK);
+        outOfStock.setCategory(category);
 
-        @Test
-        @DisplayName("updates mutable fields and saves")
-        void updatesMutableFields() {
-            given(productRepository.findById(productId)).willReturn(Optional.of(sampleProduct));
-            given(productRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        when(productRepository.existsBySku("SKU-002")).thenReturn(false);
+        when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+        when(productRepository.save(any())).thenReturn(outOfStock);
 
-            Product updates = Product.builder()
-                    .name("Platinum Bracelet")
-                    .description("Updated")
-                    .basePrice(new BigDecimal("350.00"))
-                    .category(sampleProduct.getCategory())
-                    .isActive(true)
-                    .build();
-
-            Product result = productService.update(productId, updates);
-
-            assertThat(result.getName()).isEqualTo("Platinum Bracelet");
-            assertThat(result.getBasePrice()).isEqualByComparingTo("350.00");
-        }
+        ProductResponse resp = productService.create(zeroStock);
+        assertThat(resp.status()).isEqualTo("OUT_OF_STOCK");
     }
 
-    // ── delete (soft) ──────────────────────────────────────────
-    @Nested
-    @DisplayName("delete")
-    class Delete {
-
-        @Test
-        @DisplayName("sets isActive to false (soft delete)")
-        void softDeletesSetsInactive() {
-            given(productRepository.findById(productId)).willReturn(Optional.of(sampleProduct));
-            given(productRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-
-            productService.delete(productId);
-
-            assertThat(sampleProduct.isActive()).isFalse();
-            then(productRepository).should().save(sampleProduct);
-        }
+    @Test
+    void getById_success() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        assertThat(productService.getById(1L).sku()).isEqualTo("SKU-001");
     }
 
-    // ── search ─────────────────────────────────────────────────
-    @Nested
-    @DisplayName("search")
-    class Search {
+    @Test
+    void getById_notFound_throws() {
+        when(productRepository.findById(99L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> productService.getById(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
 
-        @Test
-        @DisplayName("delegates to repository with trimmed query")
-        void delegatesSearch_withTrimmedQuery() {
-            Page<Product> page = new PageImpl<>(List.of(sampleProduct));
-            PageRequest pageable = PageRequest.of(0, 20);
-            given(productRepository.search(eq("bracelet"), eq(pageable))).willReturn(page);
+    @Test
+    void update_success() {
+        ProductRequest updateReq = new ProductRequest("Updated", "D", "SKU-001",
+                new BigDecimal("799.00"), null, 5, null, null, true, 1L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+        when(productRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            Page<Product> result = productService.search("  bracelet  ", pageable);
+        ProductResponse resp = productService.update(1L, updateReq);
+        assertThat(resp.name()).isEqualTo("Updated");
+    }
 
-            assertThat(result.getContent()).hasSize(1);
-            then(productRepository).should().search("bracelet", pageable);
-        }
+    @Test
+    void delete_softDeletes() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any())).thenReturn(product);
+
+        productService.delete(1L);
+
+        assertThat(product.getStatus()).isEqualTo(Product.ProductStatus.INACTIVE);
+        verify(productRepository).save(product);
+    }
+
+    @Test
+    void getAll_returnsMappedPage() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByStatus(eq(Product.ProductStatus.ACTIVE), any())).thenReturn(page);
+
+        Page<ProductResponse> result = productService.getAll(PageRequest.of(0, 10));
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    void search_returnsResults() {
+        when(productRepository.search("phone")).thenReturn(List.of(product));
+        assertThat(productService.search("phone")).hasSize(1);
     }
 }

@@ -1,101 +1,124 @@
 package com.p5store.service.impl;
 
-import com.p5store.domain.*;
-import com.p5store.exception.BadRequestException;
+import com.p5store.domain.Cart;
+import com.p5store.domain.CartItem;
+import com.p5store.domain.Product;
+import com.p5store.dto.request.CartItemRequest;
+import com.p5store.dto.response.CartResponse;
+import com.p5store.exception.BusinessException;
 import com.p5store.exception.ResourceNotFoundException;
 import com.p5store.repository.CartRepository;
-import com.p5store.repository.ProductVariantRepository;
-import com.p5store.repository.UserRepository;
+import com.p5store.repository.ProductRepository;
 import com.p5store.service.CartService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
+import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;
-    private final UserRepository userRepository;
-    private final ProductVariantRepository variantRepository;
+    private final ProductRepository productRepository;
 
     @Override
-    public Cart getOrCreateCart(UUID userId) {
-        return cartRepository.findByUserIdWithItems(userId)
-                .orElseGet(() -> {
-                    User user = userRepository.findById(userId)
-                            .orElseThrow(() -> new ResourceNotFoundException("User", userId));
-                    Cart cart = Cart.builder().user(user).build();
-                    return cartRepository.save(cart);
-                });
+    public CartResponse getCart(Long userId) {
+        return toResponse(findCart(userId));
     }
 
     @Override
-    public Cart addItem(UUID userId, UUID variantId, int quantity) {
-        if (quantity <= 0) throw new BadRequestException("Quantity must be at least 1");
+    @Transactional
+    public CartResponse addItem(Long userId, CartItemRequest req) {
+        Cart cart = findCart(userId);
+        Product product = findProduct(req.productId());
 
-        Cart cart = getOrCreateCart(userId);
-        ProductVariant variant = variantRepository.findById(variantId)
-                .orElseThrow(() -> new ResourceNotFoundException("ProductVariant", variantId));
+        if (product.getStockQuantity() == 0)
+            throw new BusinessException("Product is out of stock");
 
-        if (!variant.isInStock()) {
-            throw new BadRequestException("Product variant is out of stock");
-        }
-        if (variant.getStockQuantity() < quantity) {
-            throw new BadRequestException("Only " + variant.getStockQuantity() + " units available");
-        }
-
-        // If item already exists in cart, increment quantity
         cart.getItems().stream()
-                .filter(i -> i.getProductVariant().getId().equals(variantId))
+                .filter(i -> i.getProduct().getId().equals(req.productId()))
                 .findFirst()
                 .ifPresentOrElse(
-                        existing -> existing.setQuantity(existing.getQuantity() + quantity),
-                        () -> cart.getItems().add(
-                                CartItem.builder()
-                                        .cart(cart)
-                                        .productVariant(variant)
-                                        .quantity(quantity)
-                                        .build())
+                        existing -> {
+                            int newQty = existing.getQuantity() + req.quantity();
+                            if (newQty > product.getStockQuantity())
+                                throw new BusinessException("Not enough stock");
+                            existing.setQuantity(newQty);
+                        },
+                        () -> {
+                            if (req.quantity() > product.getStockQuantity())
+                                throw new BusinessException("Not enough stock");
+                            CartItem item = new CartItem();
+                            item.setCart(cart);
+                            item.setProduct(product);
+                            item.setQuantity(req.quantity());
+                            cart.getItems().add(item);
+                        }
                 );
-        return cartRepository.save(cart);
+
+        return toResponse(cartRepository.save(cart));
     }
 
     @Override
-    public Cart updateItem(UUID userId, UUID variantId, int quantity) {
-        Cart cart = getOrCreateCart(userId);
-
-        if (quantity <= 0) {
-            return removeItem(userId, variantId);
-        }
-
+    @Transactional
+    public CartResponse updateItem(Long userId, Long productId, int quantity) {
+        Cart cart = findCart(userId);
         CartItem item = cart.getItems().stream()
-                .filter(i -> i.getProductVariant().getId().equals(variantId))
+                .filter(i -> i.getProduct().getId().equals(productId))
                 .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException("Cart item not found for variant " + variantId));
+                .orElseThrow(() -> new ResourceNotFoundException("Item not in cart"));
 
-        ProductVariant variant = item.getProductVariant();
-        if (variant.getStockQuantity() < quantity) {
-            throw new BadRequestException("Only " + variant.getStockQuantity() + " units available");
-        }
+        if (quantity > item.getProduct().getStockQuantity())
+            throw new BusinessException("Not enough stock");
+
         item.setQuantity(quantity);
-        return cartRepository.save(cart);
+        return toResponse(cartRepository.save(cart));
     }
 
     @Override
-    public Cart removeItem(UUID userId, UUID variantId) {
-        Cart cart = getOrCreateCart(userId);
-        cart.getItems().removeIf(i -> i.getProductVariant().getId().equals(variantId));
-        return cartRepository.save(cart);
+    @Transactional
+    public CartResponse removeItem(Long userId, Long productId) {
+        Cart cart = findCart(userId);
+        cart.getItems().removeIf(i -> i.getProduct().getId().equals(productId));
+        return toResponse(cartRepository.save(cart));
     }
 
     @Override
-    public void clearCart(UUID userId) {
-        Cart cart = getOrCreateCart(userId);
-        cart.clear();
+    @Transactional
+    public void clearCart(Long userId) {
+        Cart cart = findCart(userId);
+        cart.getItems().clear();
         cartRepository.save(cart);
+    }
+
+    private Cart findCart(Long userId) {
+        return cartRepository.findByUserIdWithItems(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cart not found for user: " + userId));
+    }
+
+    private Product findProduct(Long id) {
+        return productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + id));
+    }
+
+    CartResponse toResponse(Cart cart) {
+        List<CartResponse.CartItemResponse> items = cart.getItems().stream()
+                .map(i -> new CartResponse.CartItemResponse(
+                        i.getProduct().getId(),
+                        i.getProduct().getName(),
+                        i.getProduct().getImageUrl(),
+                        i.getProduct().getPrice(),
+                        i.getQuantity(),
+                        i.getProduct().getPrice().multiply(BigDecimal.valueOf(i.getQuantity()))
+                )).toList();
+
+        BigDecimal total = items.stream()
+                .map(CartResponse.CartItemResponse::subtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new CartResponse(cart.getId(), items, total);
     }
 }

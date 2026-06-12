@@ -1,27 +1,29 @@
 package com.p5store.controller;
 
-import com.p5store.dto.request.AuthDtos.*;
-import com.p5store.service.AuthService;
+import com.p5store.dto.request.LoginRequest;
+import com.p5store.dto.request.RegisterRequest;
+import com.p5store.dto.response.AuthResponse;
+import com.p5store.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final AuthService authService;
+    private final UserService userService;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
+    @ResponseStatus(HttpStatus.CREATED)
+    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+        return userService.register(request);
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+        return userService.login(request);
     }
 }

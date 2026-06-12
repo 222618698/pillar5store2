@@ -1,222 +1,137 @@
 package com.p5store.service;
 
 import com.p5store.domain.*;
-import com.p5store.exception.BadRequestException;
+import com.p5store.dto.request.CartItemRequest;
+import com.p5store.dto.response.CartResponse;
+import com.p5store.exception.BusinessException;
 import com.p5store.exception.ResourceNotFoundException;
 import com.p5store.repository.CartRepository;
-import com.p5store.repository.ProductVariantRepository;
-import com.p5store.repository.UserRepository;
+import com.p5store.repository.ProductRepository;
 import com.p5store.service.impl.CartServiceImpl;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.BDDMockito.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("CartService")
 class CartServiceTest {
 
     @Mock CartRepository cartRepository;
-    @Mock UserRepository userRepository;
-    @Mock ProductVariantRepository variantRepository;
+    @Mock ProductRepository productRepository;
     @InjectMocks CartServiceImpl cartService;
 
-    private UUID userId;
-    private UUID variantId;
-    private User user;
-    private ProductVariant variant;
-    private Cart cart;
+    Cart cart;
+    Product product;
+    User user;
 
     @BeforeEach
     void setUp() {
-        userId    = UUID.randomUUID();
-        variantId = UUID.randomUUID();
+        user = new User();
+        user.setId(1L);
 
-        user = User.builder().firstName("John").lastName("Doe").email("john@test.com").build();
+        product = new Product();
+        product.setId(10L);
+        product.setName("Laptop");
+        product.setSku("LAP-001");
+        product.setPrice(new BigDecimal("1200.00"));
+        product.setStockQuantity(5);
+        product.setStatus(Product.ProductStatus.ACTIVE);
 
-        Product product = Product.builder()
-                .name("Test Product")
-                .basePrice(new BigDecimal("100.00"))
-                .build();
-
-        variant = ProductVariant.builder()
-                .product(product)
-                .size("M")
-                .colour("Blue")
-                .priceModifier(BigDecimal.ZERO)
-                .stockQuantity(10)
-                .build();
-        // reflectively set id for lookups
-        setId(variant, variantId);
-
-        cart = Cart.builder().user(user).build();
+        cart = new Cart();
+        cart.setId(1L);
+        cart.setUser(user);
+        cart.setItems(new ArrayList<>());
     }
 
-    // ── getOrCreateCart ────────────────────────────────────────
-    @Nested
-    @DisplayName("getOrCreateCart")
-    class GetOrCreateCart {
+    @Test
+    void addItem_success() {
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+        when(cartRepository.save(any())).thenReturn(cart);
 
-        @Test
-        @DisplayName("returns existing cart when found")
-        void returnsExisting_whenFound() {
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-
-            Cart result = cartService.getOrCreateCart(userId);
-
-            assertThat(result).isSameAs(cart);
-            then(userRepository).shouldHaveNoInteractions();
-        }
-
-        @Test
-        @DisplayName("creates new cart when none exists")
-        void createsNew_whenNotFound() {
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.empty());
-            given(userRepository.findById(userId)).willReturn(Optional.of(user));
-            given(cartRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-
-            Cart result = cartService.getOrCreateCart(userId);
-
-            assertThat(result).isNotNull();
-            assertThat(result.getUser()).isEqualTo(user);
-            then(cartRepository).should().save(any(Cart.class));
-        }
-
-        @Test
-        @DisplayName("throws ResourceNotFoundException when user not found")
-        void throwsNotFound_whenUserMissing() {
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.empty());
-            given(userRepository.findById(userId)).willReturn(Optional.empty());
-
-            assertThatThrownBy(() -> cartService.getOrCreateCart(userId))
-                    .isInstanceOf(ResourceNotFoundException.class);
-        }
+        CartResponse resp = cartService.addItem(1L, new CartItemRequest(10L, 2));
+        assertThat(resp.items()).hasSize(1);
     }
 
-    // ── addItem ────────────────────────────────────────────────
-    @Nested
-    @DisplayName("addItem")
-    class AddItem {
+    @Test
+    void addItem_mergesQuantity() {
+        CartItem existing = new CartItem();
+        existing.setProduct(product);
+        existing.setQuantity(2);
+        cart.getItems().add(existing);
 
-        @Test
-        @DisplayName("adds new item to empty cart")
-        void addsNewItem_toEmptyCart() {
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(variantRepository.findById(variantId)).willReturn(Optional.of(variant));
-            given(cartRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+        when(cartRepository.save(any())).thenReturn(cart);
 
-            Cart result = cartService.addItem(userId, variantId, 2);
-
-            assertThat(result.getItems()).hasSize(1);
-            assertThat(result.getItems().get(0).getQuantity()).isEqualTo(2);
-        }
-
-        @Test
-        @DisplayName("increments quantity when variant already in cart")
-        void incrementsQuantity_whenVariantAlreadyInCart() {
-            // Pre-populate cart with 1 of this variant
-            CartItem existingItem = CartItem.builder()
-                    .cart(cart).productVariant(variant).quantity(1).build();
-            cart.getItems().add(existingItem);
-
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(variantRepository.findById(variantId)).willReturn(Optional.of(variant));
-            given(cartRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-
-            Cart result = cartService.addItem(userId, variantId, 3);
-
-            assertThat(result.getItems()).hasSize(1);
-            assertThat(result.getItems().get(0).getQuantity()).isEqualTo(4); // 1 + 3
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when quantity <= 0")
-        void throwsBadRequest_whenQuantityZero() {
-            assertThatThrownBy(() -> cartService.addItem(userId, variantId, 0))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("Quantity");
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when variant is out of stock")
-        void throwsBadRequest_whenOutOfStock() {
-            variant.setStockQuantity(0);
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(variantRepository.findById(variantId)).willReturn(Optional.of(variant));
-
-            assertThatThrownBy(() -> cartService.addItem(userId, variantId, 1))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("out of stock");
-        }
-
-        @Test
-        @DisplayName("throws BadRequestException when requested qty exceeds stock")
-        void throwsBadRequest_whenExceedsStock() {
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(variantRepository.findById(variantId)).willReturn(Optional.of(variant));
-
-            assertThatThrownBy(() -> cartService.addItem(userId, variantId, 99))
-                    .isInstanceOf(BadRequestException.class)
-                    .hasMessageContaining("10");
-        }
+        cartService.addItem(1L, new CartItemRequest(10L, 2));
+        assertThat(existing.getQuantity()).isEqualTo(4);
     }
 
-    // ── removeItem ─────────────────────────────────────────────
-    @Nested
-    @DisplayName("removeItem")
-    class RemoveItem {
+    @Test
+    void addItem_outOfStock_throws() {
+        product.setStockQuantity(0);
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
-        @Test
-        @DisplayName("removes item from cart")
-        void removesItem() {
-            CartItem item = CartItem.builder()
-                    .cart(cart).productVariant(variant).quantity(2).build();
-            cart.getItems().add(item);
-
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(cartRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-
-            Cart result = cartService.removeItem(userId, variantId);
-
-            assertThat(result.getItems()).isEmpty();
-        }
+        assertThatThrownBy(() -> cartService.addItem(1L, new CartItemRequest(10L, 1)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("out of stock");
     }
 
-    // ── clearCart ──────────────────────────────────────────────
-    @Nested
-    @DisplayName("clearCart")
-    class ClearCart {
+    @Test
+    void addItem_exceedsStock_throws() {
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
 
-        @Test
-        @DisplayName("removes all items")
-        void removesAllItems() {
-            cart.getItems().add(CartItem.builder().cart(cart).productVariant(variant).quantity(1).build());
-            given(cartRepository.findByUserIdWithItems(userId)).willReturn(Optional.of(cart));
-            given(cartRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
-
-            cartService.clearCart(userId);
-
-            assertThat(cart.getItems()).isEmpty();
-        }
+        assertThatThrownBy(() -> cartService.addItem(1L, new CartItemRequest(10L, 10)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Not enough stock");
     }
 
-    // ── Helper — set id on entity via reflection ───────────────
-    private void setId(Object entity, UUID id) {
-        try {
-            var f = com.p5store.domain.BaseEntity.class.getDeclaredField("id");
-            f.setAccessible(true);
-            f.set(entity, id);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    @Test
+    void addItem_productNotFound_throws() {
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(productRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cartService.addItem(1L, new CartItemRequest(99L, 1)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void removeItem_success() {
+        CartItem item = new CartItem();
+        item.setProduct(product);
+        item.setQuantity(1);
+        cart.getItems().add(item);
+
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any())).thenReturn(cart);
+
+        CartResponse resp = cartService.removeItem(1L, 10L);
+        assertThat(resp.items()).isEmpty();
+    }
+
+    @Test
+    void clearCart_success() {
+        CartItem item = new CartItem();
+        item.setProduct(product);
+        item.setQuantity(1);
+        cart.getItems().add(item);
+
+        when(cartRepository.findByUserIdWithItems(1L)).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any())).thenReturn(cart);
+
+        cartService.clearCart(1L);
+        assertThat(cart.getItems()).isEmpty();
     }
 }

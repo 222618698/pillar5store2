@@ -1,22 +1,16 @@
 package com.p5store.service;
 
 import com.p5store.domain.Order;
-import com.p5store.enums.OrderStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.p5store.dto.request.PlaceOrderRequest;
+import com.p5store.dto.response.OrderResponse;
 
-import java.util.UUID;
+import java.util.List;
 
 public interface OrderService {
-    /** Converts the user's current cart into an order. */
-    Order placeOrder(UUID userId, UUID shippingAddressId, String discountCode);
-
-    Order findById(UUID id);
-    Order findByOrderNumber(String orderNumber);
-
-    Page<Order> findByUser(UUID userId, Pageable pageable);
-    Page<Order> findAll(Pageable pageable);
-
-    Order updateStatus(UUID id, OrderStatus newStatus);
-    Order cancel(UUID id, UUID requestingUserId);
+    OrderResponse placeOrder(Long userId, PlaceOrderRequest request);
+    List<OrderResponse> getUserOrders(Long userId);
+    OrderResponse getById(Long orderId);
+    OrderResponse getByOrderNumber(String orderNumber);
+    OrderResponse updateStatus(Long orderId, Order.OrderStatus status);
+    OrderResponse cancelOrder(Long userId, Long orderId);
 }

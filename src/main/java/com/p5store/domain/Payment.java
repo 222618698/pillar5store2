@@ -1,7 +1,5 @@
 package com.p5store.domain;
 
-import com.p5store.enums.PaymentProvider;
-import com.p5store.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -10,31 +8,39 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "payments")
-@Getter @Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Payment extends BaseEntity {
+@Getter @Setter @NoArgsConstructor
+public class Payment {
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false, unique = true)
-    private Order order;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private PaymentProvider provider;
+    private PaymentMethod method;
 
-    @Column(name = "transaction_id", length = 120)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PaymentStatus status = PaymentStatus.PENDING;
+
+    @Column(length = 200)
     private String transactionId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private PaymentStatus status = PaymentStatus.PENDING;
+    @Column(length = 500)
+    private String gatewayResponse;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
 
-    @Column(name = "paid_at")
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false, unique = true)
+    private Order order;
+
+    private LocalDateTime createdAt;
     private LocalDateTime paidAt;
+
+    @PrePersist
+    void prePersist() { this.createdAt = LocalDateTime.now(); }
+
+    public enum PaymentMethod { PAYPAL, VISA, MASTERCARD, MAESTRO }
+    public enum PaymentStatus { PENDING, COMPLETED, FAILED, REFUNDED }
 }

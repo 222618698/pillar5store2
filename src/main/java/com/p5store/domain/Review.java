@@ -2,26 +2,23 @@ package com.p5store.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "reviews",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"product_id", "user_id"}))
-@Getter @Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Review extends BaseEntity {
+       uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "product_id"}))
+@EntityListeners(AuditingEntityListener.class)
+@Getter @Setter @NoArgsConstructor
+public class Review {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(nullable = false)
-    private int rating; // 1–5
+    private int rating;
 
     @Column(length = 200)
     private String title;
@@ -29,7 +26,17 @@ public class Review extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String body;
 
-    @Column(name = "is_verified", nullable = false)
-    @Builder.Default
-    private boolean isVerified = false;
+    @Column(nullable = false)
+    private boolean approved = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
+
+    @CreatedDate @Column(updatable = false)
+    private LocalDateTime createdAt;
 }
